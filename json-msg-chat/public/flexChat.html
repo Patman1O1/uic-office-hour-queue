@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Flex Message Client</title>
+    <link rel="stylesheet" href="includes/messageChat.css">
+    <style>
+        
+#messages_flex_container
+{
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    padding-left: 15pt;
+}
+    
+.flex_card
+{
+    width: 250pt;
+    border: 1px solid #cccccc;
+    margin: 15pt 15pt 0pt 0pt;
+    display: block;
+    position: relative;
+}
+table
+{
+    /* display: inline-block; */
+    /* border-collapse: collapse; */
+    padding: 0pt 5pt 0pt 0pt;
+    border: 1px;
+}
+tr, td
+{
+    /* display: inline-block; */
+    /* border-collapse: collapse; */
+    padding: 4pt;
+}
+.field_name
+{
+    text-align: right;
+    font-style: italic;
+}
+    </style>
+<script src="/socket.io/socket.io.js"></script>
+<script src="includes/clientServer.js"></script>
+<script src="includes/setupEventHandlers.js"></script>
+<script>
+  // Socket.io tutorial revised by @andru1d to show JSON messaging
+
+  function buildFlexElement(msg)
+  {
+      let messageElement = document.createElement('div');
+      messageElement.setAttribute('class', 'flex_card')
+      let table = document.createElement('table');
+      let tbody = document.createElement('tbody');
+      table.appendChild(tbody);
+      messageElement.appendChild(table);
+      let messageObject = JSON.parse(msg);
+      for (thatFieldName in messageObject)
+      {
+        let thatRowElement = document.createElement('tr');
+        let thatNameTd     = document.createElement('td');
+        thatNameTd.setAttribute('class', 'field_name');
+        thatNameTd.textContent = thatFieldName;
+        thatRowElement.appendChild(thatNameTd);
+        let thatValueTd    = document.createElement('td');
+        thatValueTd.textContent = messageObject[thatFieldName];
+        thatRowElement.appendChild(thatValueTd);
+        tbody.appendChild(thatRowElement);
+      }
+      return messageElement;
+  }
+  // {"name":"chat","msg":"One is fun","clientNum":1,"id":"4z0LdxW3hb39iJcOAAAD"}
+</script>
+</head>
+
+<body onload="setupEventHandlers('messages_flex_container',buildFlexElement)">
+<span id="client_num">X</span><div id="messages_flex_container"></div>
+  <form id="form" action="">
+    <input id="input" autocomplete="off" /><button>Send</button><a target="_blank" href="index.html"><button type="button">Spawn<br/>JSON</button></a>
+  </form>
+</body>

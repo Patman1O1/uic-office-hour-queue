@@ -1,0 +1,9 @@
+{
+  "name": "json-message-chat-example",
+  "version": "0.0.5",
+  "description": "json message chat app",
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.7.2"
+  }
+}
