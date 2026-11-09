@@ -1,0 +1,17 @@
+{
+  "name": "myofficehours-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch src/start.js",
+    "start": "node src/start.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.7.2"
+  }
+}
