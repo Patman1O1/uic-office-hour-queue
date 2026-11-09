@@ -1,3 +1,18 @@
+/*
+ * UIC visual identity — https://brand.uic.edu/visual-identity/
+ *
+ * Color rules applied here:
+ *  - Lead with the primaries: Navy Pier Blue for headlines, primary actions and
+ *    key numbers; Fire Engine Red only for big impact moments (hero headline,
+ *    brand rule) — never body copy or small text.
+ *  - Light neutrals (White, Expo White, North Avenue Beach) carry the layout;
+ *    Steel Gray is the body-copy color.
+ *  - Tertiary colors (Chicago River Green, Chicago Blue) are accents only:
+ *    the "called" state and focus rings.
+ *  - Red and green never touch — a neutral always sits between them.
+ *  - Dark Maroon is used only for text and linework (warning states).
+ *  - Never Fire Engine Red on Navy Pier Blue (or vice versa) for text.
+ */
 :root {
     /* UIC Primary Colors */
     --fire-engine-red: #D50032;
@@ -19,5 +34,115 @@
     --chicago-blue: #41B6E6;
     --ui-health-sky: #3D8DA4;
     --dark-maroon: #480002;
+
+    /* ---- App roles, built only from the palette above (plus tints) ---- */
+    --bg: var(--expo-white);
+    --surface: var(--white);
+    --text: var(--steel-gray);
+    --text-muted: #5f5c57;                 /* Steel Gray tint, 6.3:1 on white */
+    --heading: var(--navy-pier-blue);
+    --border: #e3ded2;                     /* Expo White shade */
+    --border-strong: #c8c1b2;
+
+    --primary: var(--navy-pier-blue);
+    --primary-hover: #0b2f80;
+    --primary-soft: #e3edf3;               /* Second City Slate tint */
+    --accent-line: var(--fire-engine-red); /* brand rule / linework */
+
+    --success: var(--chicago-river-green);
+    --success-strong: #00664a;             /* River Green shade for text, 6.6:1 */
+    --success-soft: #e2f3ec;
+
+    --warning-text: var(--dark-maroon);
+    --warning-line: #8c5a4a;               /* Dark Maroon tint for borders */
+    --warning-soft: var(--north-avenue-beach);
+
+    --danger: var(--chicago-brick);        /* destructive text at button size */
+    --danger-soft: #fbeceb;
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 2px rgb(0 30 98 / 6%), 0 8px 24px rgb(0 30 98 / 7%);
+
+    /*
+     * Typography. UIC's fonts are licensed, so they can't ship in this repo.
+     * Each stack names the brand font first (used if installed on the
+     * computer), then a free look-alike bundled with the app:
+     *   Obviously  → Archivo Expanded   headlines, impact words, ALL CAPS
+     *   Theinhardt → Inter              workhorse: headings, subheads, body
+     *   Pitch Sans → Azeret Mono        eyebrows, calls to action, codes
+     * To use licensed web fonts, see "Brand fonts" in the README.
+     */
+    --font-display: 'Obviously', 'Obviously Wide', 'Archivo Variable', 'Arial Black', sans-serif;
+    --font-sans: 'Theinhardt', 'Inter Variable', Arial, Helvetica, sans-serif;
+    --font-accent: 'Pitch Sans', 'Azeret Mono Variable', ui-monospace, monospace;
+    --font-mono: var(--font-accent);
+
+    color-scheme: light;
+    font-family: var(--font-sans);
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal; /* optical kerning per brand guide where the font supports it */
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100dvh;
+}
+
+/* Theinhardt Bold headlines in Navy Pier Blue; tracking 0 to –20 */
+h1,
+h2,
+h3 {
+    margin: 0;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    color: var(--heading);
+}
+
+p {
+    margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    color: inherit;
+}
+
+a {
+    color: var(--primary);
+}
+
+:focus-visible {
+    outline: 3px solid var(--chicago-blue);
+    outline-offset: 2px;
+}
+
+/* Obviously: impact words, all caps, tracking –20 to –40 */
+.display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+}
+
+/* Pitch Sans: eyebrows, intros, calls to action */
+.accent {
+    font-family: var(--font-accent);
+    letter-spacing: -0.01em;
+}
