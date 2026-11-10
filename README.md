@@ -1,3 +1,10 @@
+# MyOfficeHours
+
+The student interface is implemented at `/queue/:queueId`. See
+[STUDENT_INTERFACE.md](./STUDENT_INTERFACE.md) for startup commands, field mapping,
+credential recovery, responsive layout, and real-backend browser tests.
+Backend implementation and contract are in `server/` and are preserved.
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
