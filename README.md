@@ -1,6 +1,6 @@
 # MyOfficeHours
 
-Office-hours queues for instructors, TAs and students. Built with React, Vite,
+Office-hours queues for instructors, TAs and students. Built with React, CSS, Vite,
 Supabase Postgres/Realtime and a stateless Vercel API.
 
 Live site: [myofficehours.vercel.app](https://myofficehours.vercel.app/).
