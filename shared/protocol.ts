@@ -28,6 +28,7 @@ export const Status = {
   MOVED_ASIDE: 'MOVED_ASIDE',
   DONE: 'DONE',
   REMOVED: 'REMOVED',
+  LEFT: 'LEFT',
 } as const;
 export type Status = (typeof Status)[keyof typeof Status];
 
@@ -59,6 +60,7 @@ export const DEFAULT_SERVICE_MS = 5 * 60_000;
 
 /** Public information about a session (anyone with the join code). */
 export interface SessionInfo {
+  revision?: number;
   code: string;
   courseId: string;
   name: string;
@@ -119,6 +121,7 @@ export interface StudentView {
 export type Ack<T = object> = (res: ({ ok: true } & T) | { ok: false; error: string }) => void;
 
 export interface CreateSessionRequest {
+  idempotencyKey?: string;
   hostName: string;
   role: Role;
   courseId: string;
@@ -126,6 +129,7 @@ export interface CreateSessionRequest {
 }
 
 export interface JoinRequest {
+  idempotencyKey?: string;
   code: string;
   name: string;
   netId: string;

@@ -1,18 +1,36 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
+import { databaseRequest } from './server/database.ts'
 
-// The Node/Socket.io server (server/index.ts) runs on 3001 during development.
-const API = `http://localhost:${process.env.PORT ?? 3001}`
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    // Listen on the LAN too, so phones on the same Wi-Fi can open the QR link.
-    host: true,
-    proxy: {
-      '/socket.io': { target: API, ws: true },
-      '/api': API,
-    },
-  },
+export default defineConfig(({ mode }) => {
+  Object.assign(process.env, loadEnv(mode, process.cwd(), 'SUPABASE_'));
+  return {
+    plugins: [react(), {
+      name: 'local-queue-api',
+      configureServer(server) {
+        server.middlewares.use('/api/queue', async (req, res) => {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.end(JSON.stringify({ ok: false, error: 'Use POST.' }));
+            return;
+          }
+          try {
+            let raw = '';
+            for await (const chunk of req) {
+              raw += chunk;
+              if (Buffer.byteLength(raw) > 16384) throw Error('Request too large');
+            }
+            const body = JSON.parse(raw);
+            res.end(JSON.stringify(await databaseRequest(body.event, body.payload)));
+          } catch {
+            res.statusCode = 503;
+            res.end(JSON.stringify({ ok: false, error: 'The queue database is unavailable.' }));
+          }
+        });
+      },
+    }],
+    server: { host: true },
+  };
 })

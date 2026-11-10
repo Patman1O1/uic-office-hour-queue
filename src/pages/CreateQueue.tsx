@@ -2,15 +2,16 @@ import { useState, type FormEvent } from 'react';
 import { LIMITS, Role } from '../../shared/protocol.ts';
 import { Banner, Card, Field, Header, WarnIcon } from '../components/ui.tsx';
 import { navigate } from '../lib/router.ts';
-import { request } from '../lib/socket.ts';
+import { pendingRequest, request } from '../lib/socket.ts';
 import { hostedQueues } from '../lib/storage.ts';
 
 /** Fig. 5 / 13 — TA starts a new queue. */
 export function CreateQueue() {
-  const [hostName, setHostName] = useState('');
-  const [role, setRole] = useState<Role>(Role.TA);
-  const [courseId, setCourseId] = useState('');
-  const [name, setName] = useState('');
+  const pending = pendingRequest('host:create');
+  const [hostName, setHostName] = useState(pending?.hostName ?? '');
+  const [role, setRole] = useState<Role>(pending?.role ?? Role.TA);
+  const [courseId, setCourseId] = useState(pending?.courseId ?? '');
+  const [name, setName] = useState(pending?.name ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +22,7 @@ export function CreateQueue() {
     try {
       const { code, key } = await request('host:create', { hostName, role, courseId, name });
       hostedQueues.add({ code, key, courseId: courseId.trim(), name: name.trim(), createdAt: Date.now() });
-      navigate(`/host/${code}?key=${encodeURIComponent(key)}&created=1`, { replace: true });
+      navigate(`/host/${code}?created=1#key=${encodeURIComponent(key)}`, { replace: true });
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

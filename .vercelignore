@@ -1,0 +1,13 @@
+.env
+.env.*
+node_modules
+server/node_modules
+.git
+.vercel
+dist
+test-results
+playwright-report
+json-msg-chat
+STUDENT_INTERFACE.md
+server/README.md
+server/SOCKET_CONTRACT.md

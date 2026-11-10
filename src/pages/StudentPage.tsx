@@ -21,7 +21,7 @@ import {
 import { approxMinutes, clock, ordinal, plural, roleLabel, useNow } from '../lib/format.ts';
 import { alertStudent, askForNotifications, notificationPermission, primeSound } from '../lib/notify.ts';
 import { Link } from '../components/Link.tsx';
-import { onEveryConnect, request, socket, useConnection } from '../lib/socket.ts';
+import { onEveryConnect, pendingRequest, recoverPendingStudent, request, RequestError, socket, useConnection } from '../lib/socket.ts';
 import { profile, studentTicket } from '../lib/storage.ts';
 
 /**
@@ -39,45 +39,51 @@ export function StudentPage({ code }: { code: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   /* ---- live data ---------------------------------------------------------- */
   useEffect(() => {
+    let live = true;
     const fresh = () => setLastUpdated(Date.now());
     const onSession = (s: SessionInfo) => {
-      if (s.code !== code) return;
+      if (!live || s.code !== code) return;
       setInfo(s);
       fresh();
     };
     const onStudent = (v: { session: SessionInfo; me: StudentSelf | null }) => {
-      if (v.session.code !== code) return;
+      if (!live || v.session.code !== code) return;
       setInfo(v.session);
       setMe(v.me);
+      setFatal(null);
+      if (!v.session.open || !v.me || ![Status.WAITING, Status.CALLED, Status.MOVED_ASIDE].includes(v.me.status as 'WAITING' | 'CALLED' | 'MOVED_ASIDE')) setConfirmLeave(false);
       fresh();
     };
     const watchPublic = () =>
       request('session:watch', { code })
         .then(({ session }) => onSession(session))
-        .catch((err: Error) => setFatal(err.message));
+        .catch((err: Error) => { if (live) setFatal(err.message); });
 
     socket.on('session:update', onSession);
     socket.on('student:update', onStudent);
     const stop = onEveryConnect(() => {
-      const ticket = studentTicket.get(code);
-      if (!ticket) {
-        void watchPublic();
-        return;
-      }
-      request('student:watch', { code, ...ticket })
-        .then(({ view }) => onStudent(view))
-        .catch((err: Error) => {
-          if (err.message.startsWith('No queue found')) return setFatal(err.message);
-          // Our ticket is no longer valid (server restarted, or we were forgotten).
-          studentTicket.set(code, null);
-          setMe(null);
-          void watchPublic();
-        });
+      void (async () => {
+        let ticket = studentTicket.get(code);
+        if (!ticket && pendingRequest('student:join', code)) {
+          await watchPublic();
+          await recoverPendingStudent(code);
+          ticket = studentTicket.get(code);
+        }
+        if (!ticket) { await watchPublic(); return; }
+        const { view } = await request('student:watch', { code, ...ticket });
+        onStudent(view);
+      })().catch((err: Error) => {
+        if (!live) return;
+        if (err instanceof RequestError && err.connection) setNotice(err.message);
+        else setFatal(err.message);
+      });
     });
     return () => {
+      live = false;
       socket.off('session:update', onSession);
       socket.off('student:update', onStudent);
       stop();
@@ -102,21 +108,23 @@ export function StudentPage({ code }: { code: string }) {
   /* ---- actions ---------------------------------------------------------- */
   const forget = async () => {
     const ticket = studentTicket.get(code);
-    if (ticket) await request('student:leave', { code, ...ticket }).catch(() => {});
+    const active = me && [Status.WAITING, Status.CALLED, Status.MOVED_ASIDE].some(status => status === me.status);
+    if (active && ticket) await request('student:leave', { code, ...ticket });
     studentTicket.set(code, null);
     setMe(null);
+    await request('session:watch', { code });
   };
-
   const leave = async () => {
-    setLeaving(true);
+    if (leaving || conn !== 'online') return;
+    setLeaving(true); setLeaveError(null);
     try {
       await forget();
       setNotice('You left the queue.');
-    } finally {
-      setLeaving(false);
       setConfirmLeave(false);
-    }
+    } catch (error) { setLeaveError((error as Error).message); }
+    finally { setLeaving(false); }
   };
+  const rejoin = () => { void forget().catch(error => setNotice((error as Error).message)); };
 
   /* ---- render ----------------------------------------------------------- */
   if (fatal) {
@@ -147,6 +155,8 @@ export function StudentPage({ code }: { code: string }) {
         <Header />
         <main className="page page-narrow">
           <Spinner label="Finding your queue…" />
+          {notice && <Banner tone="warning">{notice}</Banner>}
+          <button className="btn btn-secondary" onClick={() => window.location.reload()}>Retry connection</button>
         </main>
       </>
     );
@@ -160,7 +170,7 @@ export function StudentPage({ code }: { code: string }) {
     return (
       <div className="called-screen">
         <ConnectionBanner state={conn} lastUpdated={lastUpdated} />
-        <div className="called-inner">
+        <div className="called-inner" role="status" aria-live="polite">
           <div className="called-check">
             <CheckIcon size={44} />
           </div>
@@ -174,10 +184,10 @@ export function StudentPage({ code }: { code: string }) {
             Called {me.calledAt ? clock(now - me.calledAt) : ''} ago
           </p>
         </div>
-        <button className="link-button" onClick={() => setConfirmLeave(true)}>
+        <button className="link-button" disabled={conn !== 'online'} onClick={() => { setLeaveError(null); setConfirmLeave(true); }}>
           Leave queue
         </button>
-        {confirmLeave && <LeaveModal onStay={() => setConfirmLeave(false)} onLeave={leave} busy={leaving} />}
+        {confirmLeave && <LeaveModal onStay={() => setConfirmLeave(false)} onLeave={leave} busy={leaving || conn !== 'online'} error={leaveError} />}
       </div>
     );
   }
@@ -223,7 +233,7 @@ export function StudentPage({ code }: { code: string }) {
             <p>
               {info.hostName} called you but couldn't find you, so you've been moved aside. <strong>Let them know you're here</strong> and they'll put you back at the front of the line.
             </p>
-            <button className="btn btn-ghost-danger" onClick={() => setConfirmLeave(true)}>
+            <button className="btn btn-ghost-danger" disabled={conn !== 'online'} onClick={() => { setLeaveError(null); setConfirmLeave(true); }}>
               Leave Queue
             </button>
           </Card>
@@ -239,17 +249,19 @@ export function StudentPage({ code }: { code: string }) {
               <strong>{me.topic}</strong>
             </div>
             {info.open && (
-              <button className="btn btn-secondary" onClick={forget}>
+              <button className="btn btn-secondary" onClick={rejoin} disabled={conn !== 'online'}>
                 Rejoin Queue
               </button>
             )}
           </Card>
+        ) : me?.status === Status.LEFT ? (
+          <Card className="center"><h2>You left the queue</h2><p>Your departure was confirmed.</p>{info.open && <button className="btn btn-secondary" onClick={rejoin} disabled={conn !== 'online'}>Rejoin Queue</button>}</Card>
         ) : me?.status === Status.REMOVED ? (
           <Card className="center">
             <h2>You were removed from the queue</h2>
             <p className="muted">{info.hostName} took you off the list. If you still need help, you can join again.</p>
             {info.open && (
-              <button className="btn btn-secondary" onClick={forget}>
+              <button className="btn btn-secondary" onClick={rejoin} disabled={conn !== 'online'}>
                 Rejoin Queue
               </button>
             )}
@@ -263,7 +275,7 @@ export function StudentPage({ code }: { code: string }) {
           <JoinForm info={info} code={code} onJoined={() => setNotice(null)} />
         )}
 
-        {confirmLeave && <LeaveModal position={me?.position ?? null} onStay={() => setConfirmLeave(false)} onLeave={leave} busy={leaving} />}
+        {confirmLeave && active && info.open && <LeaveModal position={me?.position ?? null} onStay={() => setConfirmLeave(false)} onLeave={leave} busy={leaving || conn !== 'online'} error={leaveError} />}
       </main>
     </>
   );
@@ -273,10 +285,12 @@ export function StudentPage({ code }: { code: string }) {
 
 function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; onJoined: () => void }) {
   const saved = profile.get();
-  const [name, setName] = useState(saved?.name ?? '');
-  const [netId, setNetId] = useState(saved?.netId ?? '');
-  const [topic, setTopic] = useState('');
-  const [details, setDetails] = useState('');
+  const pending = pendingRequest('student:join', code);
+  const conn = useConnection();
+  const [name, setName] = useState(pending?.name ?? saved?.name ?? '');
+  const [netId, setNetId] = useState(pending?.netId ?? saved?.netId ?? '');
+  const [topic, setTopic] = useState(pending?.topic ?? '');
+  const [details, setDetails] = useState(pending?.details ?? '');
   const permission = notificationPermission();
   const [alerts, setAlerts] = useState(permission !== 'denied' && permission !== 'unsupported');
   const [busy, setBusy] = useState(false);
@@ -343,7 +357,7 @@ function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; o
             </span>
           </label>
         )}
-        <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
+        <button className="btn btn-primary btn-block btn-lg" disabled={busy || conn !== 'online'}>
           {busy ? 'Joining…' : 'Join Queue'}
         </button>
       </form>
@@ -398,10 +412,10 @@ function Waiting({
       </div>
       <p className="hint">
         {canAlert
-          ? "You can leave this page — we'll send a notification when it's your turn."
+          ? "Keep this page open. Device notifications can alert you while the tab is in the background."
           : "Keep this page open. It will turn green and chime when it's your turn."}
       </p>
-      <button className="btn btn-ghost-danger" onClick={onLeave}>
+      <button className="btn btn-ghost-danger" onClick={onLeave} disabled={conn !== 'online'}>
         Leave Queue
       </button>
     </Card>
@@ -410,7 +424,7 @@ function Waiting({
 
 /* ---- Fig. 12 --------------------------------------------------------------- */
 
-function LeaveModal({ position, onStay, onLeave, busy }: { position?: number | null; onStay: () => void; onLeave: () => void; busy: boolean }) {
+function LeaveModal({ position, onStay, onLeave, busy, error }: { error?: string | null; position?: number | null; onStay: () => void; onLeave: () => void; busy: boolean }) {
   return (
     <Modal
       title="Leave the queue?"
@@ -426,6 +440,7 @@ function LeaveModal({ position, onStay, onLeave, busy }: { position?: number | n
         </>
       }
     >
+      {error && <Banner tone="danger">{error}</Banner>}
       <p>
         You'll lose your spot{position ? ` (#${position})` : ''}. If you rejoin later, you'll go to the back of the line.
       </p>

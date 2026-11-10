@@ -42,23 +42,26 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
 
   useEffect(() => {
     // Drop "&created=1" so a refresh doesn't show the "Queue created" banner again.
-    if (justCreated) window.history.replaceState(null, '', `/host/${code}?key=${encodeURIComponent(hostKey)}`);
+    if (justCreated) window.history.replaceState(null, '', `/host/${code}#key=${encodeURIComponent(hostKey)}`);
   }, [justCreated, code, hostKey]);
 
   useEffect(() => {
-    const onUpdate = (v: HostView) => v.session.code === code && setView(v);
+    let live = true;
+    const onUpdate = (v: HostView) => live && v.session.code === code && setView(v);
     socket.on('host:update', onUpdate);
     const stop = onEveryConnect(() => {
       request('host:watch', { code, key: hostKey })
         .then(({ view: v }) => {
+          if (!live) return;
           setView(v);
           if (!hostedQueues.find(code)) {
             hostedQueues.add({ code, key: hostKey, courseId: v.session.courseId, name: v.session.name, createdAt: v.session.createdAt });
           }
         })
-        .catch((err: Error) => setFatal(err.message));
+        .catch((err: Error) => { if (live) setFatal(err.message); });
     });
     return () => {
+      live = false;
       socket.off('host:update', onUpdate);
       stop();
     };
@@ -72,6 +75,7 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
 
   const act = useCallback(
     async (action: HostActionType, student?: HostEntry) => {
+      if (conn !== 'online' || busy) return;
       setBusy(student ? `${action}:${student.id}` : action);
       try {
         await request('host:action', { code, key: hostKey, action, studentId: student?.id });
@@ -86,7 +90,7 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
         setBusy(null);
       }
     },
-    [code, hostKey],
+    [code, hostKey, conn, busy],
   );
 
   const joinUrl = `${window.location.origin}/q/${code}`;
@@ -233,10 +237,10 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
             {session.hostName} ({roleLabel(session.hostRole)})
           </div>
           <div className="toolbar-actions">
-            <button className="btn btn-primary btn-lg" onClick={() => act('callNext')} disabled={waitingCount === 0 || busy === 'callNext'}>
+            <button className="btn btn-primary btn-lg" onClick={() => act('callNext')} disabled={waitingCount === 0 || !!busy || conn !== 'online'}>
               Call Next
             </button>
-            <button className="btn btn-outline-danger" onClick={() => setConfirm({ kind: 'end' })}>
+            <button className="btn btn-outline-danger" disabled={conn !== 'online' || !!busy} onClick={() => setConfirm({ kind: 'end' })}>
               End Queue
             </button>
           </div>
@@ -285,7 +289,7 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
               </span>
             </div>
             {view.queue.map((s) => (
-              <Row key={s.id} s={s} now={now} graceMs={graceMs} busy={busy} act={act} onRemove={() => setConfirm({ kind: 'remove', student: s })} />
+              <Row key={s.id} s={s} now={now} graceMs={graceMs} busy={conn !== 'online' ? 'offline' : busy} act={act} onRemove={() => setConfirm({ kind: 'remove', student: s })} />
             ))}
           </div>
         )}
@@ -295,7 +299,7 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
             <h2>Moved aside</h2>
             <div className="table" role="table" aria-label="Moved aside">
               {view.movedAside.map((s) => (
-                <Row key={s.id} s={s} now={now} graceMs={graceMs} busy={busy} act={act} onRemove={() => setConfirm({ kind: 'remove', student: s })} />
+                <Row key={s.id} s={s} now={now} graceMs={graceMs} busy={conn !== 'online' ? 'offline' : busy} act={act} onRemove={() => setConfirm({ kind: 'remove', student: s })} />
               ))}
             </div>
           </section>
@@ -398,7 +402,7 @@ function Row({
   const aside = s.status === Status.MOVED_ASIDE;
   const sinceCall = s.calledAt ? now - s.calledAt : 0;
   const overdue = called && sinceCall > graceMs;
-  const isBusy = (a: string) => busy === `${a}:${s.id}`;
+  const isBusy = (a: string) => busy === 'offline' || busy === `${a}:${s.id}`;
 
   return (
     <div className={`tr ${called ? 'is-called' : ''} ${overdue ? 'is-overdue' : ''} ${aside ? 'is-aside' : ''}`} role="row">
@@ -450,7 +454,7 @@ function Row({
             </button>
           </>
         )}
-        <button className="icon-button" onClick={onRemove} aria-label={`Remove ${s.name}`} title="Remove from queue">
+        <button className="icon-button" disabled={busy === 'offline'} onClick={onRemove} aria-label={`Remove ${s.name}`} title="Remove from queue">
           <CloseIcon />
         </button>
       </span>

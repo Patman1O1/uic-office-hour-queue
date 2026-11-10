@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Deployment metadata and browser evidence
+.vercel/
+supabase/.temp/
+test-results/
+playwright-report/
+.env
+.vercel
+.env*
+
+!.env.example
+
+# Tests are retained locally and intentionally excluded from Git.
+/e2e/
+/server/tests/
+/playwright.config.ts
+/vitest.config.ts

@@ -85,10 +85,10 @@ export function Banner({
 
 /** Fig. 19 / 24 — amber banner while the socket is down. */
 export function ConnectionBanner({ state, lastUpdated }: { state: ConnectionState; lastUpdated: number | null }) {
-  if (state !== 'offline') return null;
+  if (state === 'online') return null;
   return (
     <Banner tone="warning" icon={<WarnIcon />}>
-      <strong>Connection lost.</strong> Your spot is saved — we'll reconnect automatically.
+      <strong>Connection lost.</strong> Showing your last known state while we reconnect and verify your membership.
       {lastUpdated && <div className="muted small">Last updated {timeOfDay(lastUpdated)}</div>}
     </Banner>
   );
@@ -120,16 +120,25 @@ export function Modal({
 }) {
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); }
+      if (e.key !== 'Tab') return;
+      const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]') ?? []);
+      const first = items[0], last = items.at(-1);
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={id} ref={ref}>

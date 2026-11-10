@@ -66,7 +66,7 @@ export function Home() {
               <ul>
                 {hosted.map((q) => (
                   <li key={q.code}>
-                    <Link href={`/host/${q.code}?key=${encodeURIComponent(q.key)}`}>
+                    <Link href={`/host/${q.code}`}>
                       <strong>{q.courseId}</strong> · {q.name}
                     </Link>
                     <span className="muted mono small">
