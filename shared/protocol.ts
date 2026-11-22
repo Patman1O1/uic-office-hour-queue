@@ -51,7 +51,7 @@ export const LIMITS = {
   details: 280,
 } as const;
 
-/** Used for estimated wait times until a few students have been helped. */
+/** Legacy host-dashboard fallback; never used for student wait predictions. */
 export const DEFAULT_SERVICE_MS = 5 * 60_000;
 
 /* ------------------------------------------------------------------------ */
@@ -103,7 +103,8 @@ export interface StudentSelf {
   status: Status;
   position: number | null;
   ahead: number;
-  estWaitMs: number;
+  /** null when history or current service state cannot support a prediction. */
+  estWaitMs: number | null;
   joinedAt: number;
   calledAt: number | null;
 }

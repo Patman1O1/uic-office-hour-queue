@@ -79,7 +79,7 @@ function accept(result: Result, target: Watch): Result {
   const session = (data as { session: { revision: number; code: string } }).session;
   if (session.code !== target.code) throw new RequestError('Unexpected queue response.');
   if (target.event === 'student:watch' && (data as { me?: { id: string } }).me?.id !== target.payload.id) throw new RequestError('Your saved membership credentials are invalid.');
-  if (session.revision > lastRevision) {
+  if (session.revision >= lastRevision) {
     lastRevision = session.revision; latest = result;
     emit(target.event === 'session:watch' ? 'session:update' : target.event === 'host:watch' ? 'host:update' : 'student:update', target.event === 'session:watch' ? session : result.view);
   }
@@ -188,5 +188,16 @@ export function onEveryConnect(fn: () => void): () => void {
 window.addEventListener('offline', () => { subscribed = false; set('offline'); });
 window.addEventListener('online', () => { hooks.forEach(fn => fn()); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state === 'offline' && navigator.onLine) hooks.forEach(fn => fn());
+  if (document.visibilityState === 'visible') reconcile();
 });
+
+// Realtime remains the primary path. Reconcile after focus and periodically to
+// recover missed signals, including in a running background tab. Browsers may
+// throttle or suspend this timer; this is not server push to a closed page.
+function reconcile(): void {
+  if (!watch || !navigator.onLine) return;
+  if (!subscribed) hooks.forEach(fn => fn());
+  else void refresh().catch(() => {});
+}
+window.addEventListener('focus', reconcile);
+setInterval(reconcile, 15_000);

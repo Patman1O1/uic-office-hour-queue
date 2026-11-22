@@ -39,3 +39,10 @@ playwright-report/
 /server/tests/
 /playwright.config.ts
 /vitest.config.ts
+
+# Retain regression checks for the CS 422 requirement revisions.
+!/vitest.config.ts
+!/server/tests/
+/server/tests/*
+!/server/tests/session.test.ts
+!/server/tests/socket.test.ts

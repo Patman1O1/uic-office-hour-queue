@@ -186,7 +186,7 @@ export class Session {
     const student = this._queue.remove((s) => s.getId() === id) ?? this.takeFromMovedAside(id);
     if (!student) throw new QueueError('That student is not in the queue.');
     const calledAt = student.getCalledAt();
-    if (calledAt !== null) {
+    if (student.getStatus() === Status.CALLED && calledAt !== null && now > calledAt) {
       this._serviceTimes.push(Math.max(0, now - calledAt));
       if (this._serviceTimes.length > SERVICE_SAMPLE_SIZE) this._serviceTimes.shift();
     }
@@ -253,15 +253,24 @@ export class Session {
     return Math.round(total / this._serviceTimes.length);
   }
 
-  /**
-   * Rough wait for a WAITING student: everyone ahead of them in the waiting
-   * line plus anyone currently being helped, times the average help time.
-   */
-  public estimatedWaitMs(id: string): number {
+  /** Single-host estimate; multiple calls do not establish parallel service capacity. */
+  public estimatedWaitMs(id: string, now = Date.now()): number | null {
     const position = this.positionOf(id);
-    if (position === null) return 0;
-    const ahead = position - 1 + this.called().length;
-    return ahead * this.averageServiceMs();
+    if (!this.isOpen() || position === null) return null;
+    const called = this.called();
+    if (called.length > 1) return null;
+    if (position === 1 && called.length === 0) return 0;
+    if (this._serviceTimes.length < 3) return null;
+    const average = this.averageServiceMs();
+    let remaining = 0;
+    if (called.length) {
+      const started = called[0].getCalledAt();
+      if (started === null || started > now) return null;
+      remaining = average - (now - started);
+      // An overrun gives no evidence of how much longer this visit will last.
+      if (remaining <= 0) return null;
+    }
+    return Math.round((position - 1) * average + remaining);
   }
 
   /* ---- helpers ----------------------------------------------------------- */

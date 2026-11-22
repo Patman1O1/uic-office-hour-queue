@@ -56,8 +56,11 @@ refreshes the current authorized state before enabling actions.
 
 The app remains account-free. There is no email/SMS service or university identity
 verification. Browser notifications require an open tab, permission and browser
-support. Wait estimates use the last ten completed called sessions, or a
-five-minute default. Basic capacity and admission limits apply; historical
+support. Student wait estimates require at least three positive call-to-done
+durations from the last ten valid completed visits in the current queue. They
+combine waiting students ahead with the remaining expected time of the current
+visit. Unknown history, multiple called students, and service overruns produce
+no timed estimate; the UI also hides estimates offline. Basic capacity and admission limits apply; historical
 memberships are retained until an operator chooses to clean them up.
 
 ## Build and deployment
@@ -83,12 +86,41 @@ Production was released after explicit approval on November 9, 2026. All six
 hosted browser workflows passed on the public production URL without preview
 credentials, including student/instructor realtime updates, calling/completion,
 no-show management, leaving, reconnects and join recovery. The 22 existing
-regression tests, build and lint also passed during implementation. Test files
-and their configuration are intentionally retained locally and excluded from Git.
+regression tests, build and lint also passed during implementation. The original hosted end-to-end tests remain local. Unit and socket regression
+tests and their Vitest configuration are now retained in Git.
 
 Production and Preview currently use the same Supabase project. Botzy projects
 are not used. The deployed application uses Vercel's Hobby plan and standard
 resources; no paid upgrade was authorized.
+
+## CS 422 prototype revisions (November 22, 2026)
+
+These revisions are implemented locally. The new migration
+`supabase/migrations/20261122175441_improve_wait_estimates.sql` must be applied
+before deploying this revision; no hosted database or deployment was changed.
+
+| Requirement | Previous limitation and revision | Status |
+| --- | --- | --- |
+| R2 — course information | The course appeared only as a heading. The heading now explicitly labels the course, and the join form explains that the instructor selected it for this queue. No student course input is needed because queue membership already determines the course. | Fully implemented for the existing single-course queue model. |
+| R4 — wait accuracy | The old formula charged a full average duration for every called student and invented a five-minute duration without history. Both backends now require three valid samples, use up to ten recent durations, and subtract elapsed current-visit time. They withhold predictions for insufficient history, overruns, ambiguous multiple calls, and closed queues. The UI replaces “Any minute” with “Next to be called” and hides offline predictions. | Partially implemented: a more informed estimate is implemented and tested, but real-world predictive accuracy has not been measured. The database migration is pending application. |
+| R8 — notification reliability | The checkbox previously controlled only the permission prompt; later alerts ignored it, and only WAITING → CALLED triggered a call alert. Browser alerts and vibration now require saved per-queue opt-in and current permission. Preferences can be changed while waiting. Calls recovered after reload/reconnect also alert, while repeated snapshots do not repeat the call alert. Service-worker display with desktop fallback, periodic reconciliation, focus refresh, and title cleanup improve delivery. The green call screen and chime remain independent of device-notification consent. | Partially implemented: browser/OS permission, audio autoplay rules, background throttling, and page suspension still limit delivery. There is no server push for closed pages. |
+
+Realtime revision signals remain the primary synchronization path. A 15-second
+snapshot fallback and immediate focus/visibility refresh recover missed updates;
+same-revision reads may refresh time-dependent estimates, while older revisions
+are still rejected. Audio is unlocked on Join or the next interaction after a
+reload. Browser notification opt-in does not disable the existing in-app chime.
+The service worker displays notifications; it does not cache student data or
+subscribe to remote push. See the browser's
+[notification limitations](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
+
+Validation: `npm test` (33 tests), `npm run lint`, and `npm run build` passed.
+The SQL migration and `supabase/tests/wait_estimates.sql` assertions also passed
+in a temporary PGlite PostgreSQL runtime (Supabase-specific publication and
+extension setup omitted). To repeat SQL assertions on a migrated local/test
+Supabase database, run `psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f
+supabase/tests/wait_estimates.sql`; fixtures roll back. These checks do not
+replace hosted end-to-end or physical-device background notification testing.
 
 ## AI Usage
 Codex, GPT-6.1 Sol was used.

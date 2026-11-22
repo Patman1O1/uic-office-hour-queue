@@ -68,3 +68,9 @@ export const settings = {
   graceMinutes: () => read<number>('grace') ?? 5,
   setGraceMinutes: (m: number) => write('grace', m),
 };
+
+/** Opt in per queue; missing/invalid storage never implies consent. */
+export const notificationPreference = {
+  get: (code: string) => read<boolean>(`notifications:${code}`) === true,
+  set: (code: string, enabled: boolean) => write(`notifications:${code}`, enabled),
+};

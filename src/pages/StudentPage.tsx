@@ -19,10 +19,10 @@ import {
   WarnIcon,
 } from '../components/ui.tsx';
 import { approxMinutes, clock, ordinal, plural, roleLabel, useNow } from '../lib/format.ts';
-import { alertStudent, askForNotifications, notificationPermission, primeSound } from '../lib/notify.ts';
+import { alertStudent, askForNotifications, notificationPermission, primeSound, stopFlashingTitle } from '../lib/notify.ts';
 import { Link } from '../components/Link.tsx';
 import { onEveryConnect, pendingRequest, recoverPendingStudent, request, RequestError, socket, useConnection } from '../lib/socket.ts';
-import { profile, studentTicket } from '../lib/storage.ts';
+import { notificationPreference, profile, studentTicket } from '../lib/storage.ts';
 
 /**
  * Student side (Storyboard 1):
@@ -91,19 +91,30 @@ export function StudentPage({ code }: { code: string }) {
   }, [code]);
 
   /* ---- R8: alert on the important transitions ------------------------------ */
-  const prev = useRef<{ status?: Status; position?: number | null }>({});
+  const prev = useRef<{ id?: string; status?: Status; position?: number | null; calledAt?: number | null }>({});
+  useEffect(() => {
+    // A restored ticket bypasses Join, so unlock audio on the next interaction.
+    document.addEventListener('pointerdown', primeSound, { once: true });
+    document.addEventListener('keydown', primeSound, { once: true });
+    return () => {
+      stopFlashingTitle();
+      document.removeEventListener('pointerdown', primeSound);
+      document.removeEventListener('keydown', primeSound);
+    };
+  }, [code]);
   useEffect(() => {
     const p = prev.current;
-    if (me && info) {
+    if (me && info?.open) {
       const host = info.hostName;
-      if (me.status === Status.CALLED && p.status === Status.WAITING) {
-        alertStudent("You're next!", `Head to ${host} now for ${info.courseId} office hours.`);
+      if (me.status === Status.CALLED && (p.id !== me.id || p.status !== Status.CALLED || p.calledAt !== me.calledAt)) {
+        void alertStudent("You're next!", `Head to ${host} now for ${info.courseId} office hours.`, { device: () => notificationPreference.get(code) });
       } else if (me.status === Status.WAITING && me.position === 1 && (p.position ?? 99) > 1) {
-        alertStudent("You're first in line", `${host} will call you soon — start heading back.`, { loud: false });
+        void alertStudent("You're first in line", `${host} will call you soon — stay close.`, { loud: false, device: () => notificationPreference.get(code) });
       }
     }
-    prev.current = { status: me?.status, position: me?.position };
-  }, [me, info]);
+    if (!info?.open || me?.status !== Status.CALLED) stopFlashingTitle();
+    prev.current = { id: me?.id, status: me?.status, position: me?.position, calledAt: me?.calledAt };
+  }, [me, info, code]);
 
   /* ---- actions ---------------------------------------------------------- */
   const forget = async () => {
@@ -204,7 +215,7 @@ export function StudentPage({ code }: { code: string }) {
         )}
 
         <div className="session-heading">
-          <p className="eyebrow">{info.courseId}</p>
+          <p className="eyebrow">Course: {info.courseId}</p>
           <h1>{info.name}</h1>
           <p className="muted">
             with {hostLabel}
@@ -292,7 +303,7 @@ function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; o
   const [topic, setTopic] = useState(pending?.topic ?? '');
   const [details, setDetails] = useState(pending?.details ?? '');
   const permission = notificationPermission();
-  const [alerts, setAlerts] = useState(permission !== 'denied' && permission !== 'unsupported');
+  const [alerts, setAlerts] = useState(() => notificationPreference.get(code));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -301,6 +312,7 @@ function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; o
     setBusy(true);
     setError(null);
     primeSound();
+    notificationPreference.set(code, alerts);
     if (alerts) void askForNotifications();
     try {
       const ticket = await request('student:join', { code, name, netId, topic, details });
@@ -323,6 +335,7 @@ function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; o
         </Banner>
       )}
       <form onSubmit={submit} className="form">
+        <p className="hint">You’re joining <strong>{info.courseId}</strong>. The instructor selected this course for everyone in this queue.</p>
         <Field label="Your name">
           {(id) => <input id={id} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.name} autoComplete="name" required />}
         </Field>
@@ -352,8 +365,8 @@ function JoinForm({ info, code, onJoined }: { info: SessionInfo; code: string; o
           <label className="check">
             <input type="checkbox" checked={alerts} onChange={(e) => setAlerts(e.target.checked)} />
             <span>
-              Notify me on this device when it's my turn
-              <span className="hint">So you can step away without losing your spot.</span>
+              Send browser notifications when it's my turn
+              <span className="hint">Optional. The in-app alert and chime stay on. Browser delivery is best effort.</span>
             </span>
           </label>
         )}
@@ -384,7 +397,7 @@ function Waiting({
 }) {
   const position = me.position ?? 0;
   const stale = conn !== 'online';
-  const canAlert = notificationPermission() === 'granted';
+
   return (
     <Card className="center waiting">
       <div className="row-between">
@@ -402,7 +415,7 @@ function Waiting({
         </div>
         <div>
           <dt>Estimated wait</dt>
-          <dd>{position === 1 && info.calledCount === 0 ? 'Any minute' : approxMinutes(me.estWaitMs)}</dd>
+          <dd>{stale ? 'Unavailable offline' : me.estWaitMs === null ? 'Not enough information' : me.estWaitMs === 0 ? 'Next to be called' : approxMinutes(me.estWaitMs)}</dd>
         </div>
       </dl>
       {position === 1 && <Banner tone="success">You're first in line — stay close, {info.hostName} will call you next.</Banner>}
@@ -410,15 +423,44 @@ function Waiting({
         <span className="muted small">Your topic</span>
         <strong>{me.topic}</strong>
       </div>
-      <p className="hint">
-        {canAlert
-          ? "Keep this page open. Device notifications can alert you while the tab is in the background."
-          : "Keep this page open. It will turn green and chime when it's your turn."}
-      </p>
+      <p className="hint">Estimates use recent completed visits and the current visit’s elapsed time. Visit lengths and instructor call order can vary.</p>
+      <NotificationSettings code={info.code} />
       <button className="btn btn-ghost-danger" onClick={onLeave} disabled={conn !== 'online'}>
         Leave Queue
       </button>
     </Card>
+  );
+}
+
+function NotificationSettings({ code }: { code: string }) {
+  const [enabled, setEnabled] = useState(() => notificationPreference.get(code));
+  const [permission, setPermission] = useState(notificationPermission);
+  useEffect(() => {
+    const update = () => { setPermission(notificationPermission()); setEnabled(notificationPreference.get(code)); };
+    window.addEventListener('focus', update);
+    window.addEventListener('storage', update);
+    return () => { window.removeEventListener('focus', update); window.removeEventListener('storage', update); };
+  }, [code]);
+  return (
+    <div>
+      <label className="check">
+        <input type="checkbox" checked={enabled} onChange={e => {
+          const checked = e.target.checked;
+          setEnabled(checked);
+          notificationPreference.set(code, checked);
+          primeSound();
+          if (checked) void askForNotifications().then(() => setPermission(notificationPermission()));
+        }} />
+        <span>Send browser notifications when it's my turn</span>
+      </label>
+      <p className="hint">
+        {enabled && permission === 'denied' ? 'Notifications are blocked. Allow them in browser settings. ' : ''}
+        {enabled && permission === 'unsupported' ? 'Browser notifications are unavailable on this device. ' : ''}
+        {enabled && permission === 'default' ? 'Notification permission has not been granted. Toggle this option to try again. ' : ''}
+        Keep this page open. The green alert and chime stay on; sound may require a tap after reloading.
+        Background alerts depend on your browser and device. A closed or suspended page cannot reliably receive calls.
+      </p>
+    </div>
   );
 }
 

@@ -25,13 +25,26 @@ export async function askForNotifications(): Promise<boolean> {
   }
 }
 
+let registration: Promise<ServiceWorkerRegistration | null> | null = null;
+
+function notificationWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (!registration) {
+    registration = 'serviceWorker' in navigator && window.isSecureContext
+      ? navigator.serviceWorker.register('/notification-worker.js')
+          .then(() => navigator.serviceWorker.ready).catch(() => null)
+      : Promise.resolve(null);
+  }
+  return registration;
+}
+
 let audio: AudioContext | null = null;
 
 /** Create the audio context during a user gesture (e.g. tapping Join) so it can play later. */
 export function primeSound(): void {
+  void notificationWorker();
   try {
     audio ??= new AudioContext();
-    if (audio.state === 'suspended') void audio.resume();
+    if (audio.state === 'suspended') void audio.resume().catch(() => {});
   } catch {
     audio = null;
   }
@@ -58,46 +71,65 @@ function chime(): void {
 }
 
 let titleTimer: ReturnType<typeof setInterval> | null = null;
+let titleCleanup: (() => void) | null = null;
 
 function flashTitle(message: string): void {
   stopFlashingTitle();
   const original = document.title;
   let on = false;
+  const stop = () => {
+    if (document.visibilityState === 'visible') stopFlashingTitle();
+  };
+  titleCleanup = () => {
+    document.title = original;
+    document.removeEventListener('visibilitychange', stop);
+  };
+  document.title = message;
   titleTimer = setInterval(() => {
     on = !on;
-    document.title = on ? message : original;
+    document.title = on ? original : message;
   }, 1000);
-  const stop = () => {
-    if (document.visibilityState === 'visible') {
-      stopFlashingTitle();
-      document.title = original;
-      document.removeEventListener('visibilitychange', stop);
-    }
-  };
   document.addEventListener('visibilitychange', stop);
-  setTimeout(stop, 0);
 }
 
 export function stopFlashingTitle(): void {
   if (titleTimer) clearInterval(titleTimer);
   titleTimer = null;
+  titleCleanup?.();
+  titleCleanup = null;
 }
 
-export function alertStudent(title: string, body: string, { loud = true } = {}): void {
-  if (notificationsSupported() && Notification.permission === 'granted') {
-    try {
-      const n = new Notification(title, { body, tag: 'myofficehours', requireInteraction: loud });
-      n.onclick = () => {
-        window.focus();
-        n.close();
-      };
-    } catch {
-      /* some mobile browsers only allow notifications from a service worker */
-    }
-  }
-  if (loud) {
-    navigator.vibrate?.([300, 150, 300, 150, 600]);
-    chime();
-  }
+/** Sound and in-app feedback remain available independently of device permission. */
+export async function alertStudent(
+  title: string, body: string,
+  { loud = true, device = false }: { loud?: boolean; device?: boolean | (() => boolean) } = {},
+): Promise<void> {
+  const optedIn = () => typeof device === 'function' ? device() : device;
+  if (loud) chime();
   if (document.visibilityState !== 'visible') flashTitle(`🔔 ${title}`);
+  if (!optedIn() || notificationPermission() !== 'granted') return;
+  try { if (loud) navigator.vibrate?.([300, 150, 300, 150, 600]); } catch { /* optional API */ }
+  const options: NotificationOptions = {
+    body, tag: `myofficehours:${window.location.pathname}`,
+    requireInteraction: loud, silent: !loud,
+    data: { url: window.location.pathname },
+  };
+  try {
+    // Mobile browsers commonly require the service-worker API. Do not wait
+    // indefinitely for activation: the ordinary API is still a useful fallback.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const worker = await Promise.race([
+      notificationWorker(),
+      new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), 1500); }),
+    ]);
+    clearTimeout(timeout);
+    if (!optedIn() || notificationPermission() !== 'granted') return;
+    if (worker) {
+      try { await worker.showNotification(title, options); return; } catch { /* try desktop API */ }
+    }
+    const n = new Notification(title, options);
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch {
+    // Permission, OS settings, or browser policy can still prevent delivery.
+  }
 }
