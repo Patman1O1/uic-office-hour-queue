@@ -95,14 +95,15 @@ resources; no paid upgrade was authorized.
 
 ## CS 422 prototype revisions (November 22, 2026)
 
-These revisions are implemented locally. The new migration
-`supabase/migrations/20261122175441_improve_wait_estimates.sql` must be applied
-before deploying this revision; no hosted database or deployment was changed.
+The migration `supabase/migrations/20261122230236_improve_wait_estimates.sql`
+was applied to the existing MyOfficeHours Supabase project on November 22, 2026.
+Its wait-estimate regression assertions also passed against the hosted database
+using temporary fixtures that rolled back.
 
 | Requirement | Previous limitation and revision | Status |
 | --- | --- | --- |
 | R2 — course information | The course appeared only as a heading. The heading now explicitly labels the course, and the join form explains that the instructor selected it for this queue. No student course input is needed because queue membership already determines the course. | Fully implemented for the existing single-course queue model. |
-| R4 — wait accuracy | The old formula charged a full average duration for every called student and invented a five-minute duration without history. Both backends now require three valid samples, use up to ten recent durations, and subtract elapsed current-visit time. They withhold predictions for insufficient history, overruns, ambiguous multiple calls, and closed queues. The UI replaces “Any minute” with “Next to be called” and hides offline predictions. | Partially implemented: a more informed estimate is implemented and tested, but real-world predictive accuracy has not been measured. The database migration is pending application. |
+| R4 — wait accuracy | The old formula charged a full average duration for every called student and invented a five-minute duration without history. Both backends now require three valid samples, use up to ten recent durations, and subtract elapsed current-visit time. They withhold predictions for insufficient history, overruns, ambiguous multiple calls, and closed queues. The UI replaces “Any minute” with “Next to be called” and hides offline predictions. | Partially implemented: a more informed estimate is implemented and tested, but real-world predictive accuracy has not been measured. The database migration has been applied. |
 | R8 — notification reliability | The checkbox previously controlled only the permission prompt; later alerts ignored it, and only WAITING → CALLED triggered a call alert. Browser alerts and vibration now require saved per-queue opt-in and current permission. Preferences can be changed while waiting. Calls recovered after reload/reconnect also alert, while repeated snapshots do not repeat the call alert. Service-worker display with desktop fallback, periodic reconciliation, focus refresh, and title cleanup improve delivery. The green call screen and chime remain independent of device-notification consent. | Partially implemented: browser/OS permission, audio autoplay rules, background throttling, and page suspension still limit delivery. There is no server push for closed pages. |
 
 Realtime revision signals remain the primary synchronization path. A 15-second
