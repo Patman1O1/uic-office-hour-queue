@@ -193,7 +193,7 @@ export function HostPage({ code, hostKey, justCreated }: { code: string; hostKey
                 <dd>{view.helpedCount}</dd>
               </div>
               <div>
-                <dt>Avg. time each</dt>
+                <dt>Average help time</dt>
                 <dd>{view.helpedCount ? approxMinutes(view.avgServiceMs) : '—'}</dd>
               </div>
             </dl>

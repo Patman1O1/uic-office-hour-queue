@@ -37,6 +37,8 @@ export function StudentPage({ code }: { code: string }) {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // In-memory feedback for this join only; restored tickets don't show it.
+  const [justJoined, setJustJoined] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
@@ -54,6 +56,7 @@ export function StudentPage({ code }: { code: string }) {
       if (!live || v.session.code !== code) return;
       setInfo(v.session);
       setMe(v.me);
+      if (v.me?.status !== Status.WAITING) setJustJoined(false);
       setFatal(null);
       if (!v.session.open || !v.me || ![Status.WAITING, Status.CALLED, Status.MOVED_ASIDE].includes(v.me.status as 'WAITING' | 'CALLED' | 'MOVED_ASIDE')) setConfirmLeave(false);
       fresh();
@@ -122,6 +125,7 @@ export function StudentPage({ code }: { code: string }) {
     const active = me && [Status.WAITING, Status.CALLED, Status.MOVED_ASIDE].some(status => status === me.status);
     if (active && ticket) await request('student:leave', { code, ...ticket });
     studentTicket.set(code, null);
+    setJustJoined(false);
     setMe(null);
     await request('session:watch', { code });
   };
@@ -187,9 +191,11 @@ export function StudentPage({ code }: { code: string }) {
           </div>
           <h1 className="display">You're Next!</h1>
           <p className="called-instruction">
-            Go to <strong>{info.hostName}</strong> now.
+            <strong>Please proceed to your TA now.</strong>
           </p>
           <p className="called-meta">
+            {hostLabel}
+            <br />
             {info.courseId} · {info.name}
             <br />
             Called {me.calledAt ? clock(now - me.calledAt) : ''} ago
@@ -227,6 +233,12 @@ export function StudentPage({ code }: { code: string }) {
             )}
           </p>
         </div>
+
+        {justJoined && info.open && me?.status === Status.WAITING && (
+          <Banner tone="success" icon={<CheckIcon />}>
+            Successfully joined the queue!
+          </Banner>
+        )}
 
         {!info.open && active ? (
           <Card className="center">
@@ -283,7 +295,7 @@ export function StudentPage({ code }: { code: string }) {
             <p className="muted">These office hours have ended. Check your course page for the next session.</p>
           </Card>
         ) : (
-          <JoinForm info={info} code={code} onJoined={() => setNotice(null)} />
+          <JoinForm info={info} code={code} onJoined={() => { setNotice(null); setJustJoined(true); }} />
         )}
 
         {confirmLeave && active && info.open && <LeaveModal position={me?.position ?? null} onStay={() => setConfirmLeave(false)} onLeave={leave} busy={leaving || conn !== 'online'} error={leaveError} />}
